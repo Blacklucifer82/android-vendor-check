@@ -1,5 +1,6 @@
 import os
 
+
 def find_module(blob, src_index):
     """
     Find Android.bp module corresponding to a blob.
@@ -8,6 +9,7 @@ def find_module(blob, src_index):
     name = os.path.basename(blob.path)
 
     return src_index.get(name)
+
 
 def build_bp_index(modules):
     """

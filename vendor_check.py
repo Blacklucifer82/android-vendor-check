@@ -8,9 +8,7 @@ from vendorcheck.analyzer import Analyzer
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Android Vendor Sanity Checker"
-    )
+    parser = argparse.ArgumentParser(description="Android Vendor Sanity Checker")
 
     parser.add_argument(
         "--proprietary",
@@ -41,6 +39,11 @@ def main():
         action="store_true",
         help="Analyze ELF files",
     )
+    
+    parser.add_argument(
+        "--rom",
+        help="Root of Android source tree",
+    )
 
     args = parser.parse_args()
 
@@ -49,11 +52,12 @@ def main():
 
     # Run analyzer
     analysis = Analyzer(
-    blobs=blobs,
-    vendor=args.vendor,
-    extract=args.extract,
-    bp=args.bp,
-    elf=args.elf,
+        blobs=blobs,
+        vendor=args.vendor,
+        extract=args.extract,
+        bp=args.bp,
+        rom=args.rom,
+        elf=args.elf,
     ).run()
 
     # SHA/Fixup report
@@ -93,10 +97,19 @@ def main():
                 continue
 
             if result["score"] != 100:
-                print(
-                    f'{result["module"]}: '
-                    f'{result["score"]}%'
-                )
+                print(f'{result["module"]}: ' f'{result["score"]}%')
+
+        print("\n=== Suggestions ===")
+
+        for blob in blobs:
+
+            if not blob.suggestions:
+                continue
+
+            print(f"\n{blob.path}")
+
+            for s in blob.suggestions:
+                print(f"  - {s}")
 
         print("\n=== Symbol Resolver ===")
 
@@ -110,9 +123,7 @@ def main():
             providers = x[symbol]
 
             if providers:
-                print(
-                    f"{symbol} -> {providers[0].path}"
-                )
+                print(f"{symbol} -> {providers[0].path}")
 
 
 if __name__ == "__main__":

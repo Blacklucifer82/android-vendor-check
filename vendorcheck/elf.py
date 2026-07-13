@@ -28,11 +28,10 @@ def parse_soname(blob, elf_output: str):
         if not m:
             continue
 
-        blob.soname = os.path.basename(
-            m.group(1)
-        )
+        blob.soname = os.path.basename(m.group(1))
 
         return
+
 
 def parse_needed(blob, elf_output: str):
     """

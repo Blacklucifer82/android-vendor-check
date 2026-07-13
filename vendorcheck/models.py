@@ -42,7 +42,8 @@ class Blob:
     check_elf: bool = True
 
     subsystem: str | None = None
-    
+
+
 bp_module: dict | None = None
 
 bp_shared_libs: set[str] = field(default_factory=set)
@@ -50,3 +51,7 @@ bp_shared_libs: set[str] = field(default_factory=set)
 bp_static_libs: set[str] = field(default_factory=set)
 
 bp_header_libs: set[str] = field(default_factory=set)
+
+suggestions: list[str] = field(default_factory=list)
+
+missing_libs: list[str] = field(default_factory=list)

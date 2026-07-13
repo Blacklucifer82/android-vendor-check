@@ -6,15 +6,28 @@ from vendorcheck.index import build_bp_index
 from vendorcheck.compatibility import check_blob
 from vendorcheck.resolver import resolve_undefined
 from vendorcheck.dependency import check_needed
+from vendorcheck.suggestions import suggest
+from vendorcheck.resolverdb import build_library_db
+from vendorcheck.romindex import build_rom_index
 
 
 class Analyzer:
 
-    def __init__(self, blobs, vendor, extract, bp, elf=True):
+    def __init__(
+        self,
+        blobs,
+        vendor,
+        extract,
+        bp,
+        rom=None,
+        elf=True,
+    ):
         self.blobs = blobs
         self.vendor = vendor
         self.extract = extract
         self.bp = bp
+        self.rom = rom
+        self.rom_index = None
         self.elf = elf
 
         self.modules = {}
@@ -40,22 +53,50 @@ class Analyzer:
         self.modules = parse_android_bp(self.bp)
         _, self.src_index = build_bp_index(self.modules)
 
+        if self.rom:
+            self.rom_index = build_rom_index(
+                self.rom,
+        )
+    
         if self.elf:
 
             # Analyze every ELF
             for blob in self.blobs:
                 analyze_blob(blob, self.vendor)
 
-            # Resolve undefined symbols
-            self.symbol_map = resolve_undefined(self.blobs)
+            # Build library database
+            self.library_db = build_library_db(
+                self.blobs,
+                self.modules,
+            )
+
+            # Resolve symbols
+            self.symbol_map = resolve_undefined(
+                self.blobs,
+            )
 
             # Check DT_NEEDED
-            self.missing_libs = check_needed(self.blobs)
+            self.missing_libs = check_needed(
+                self.blobs,
+                self.library_db,
+            )
 
-            # Compatibility
+            for blob in self.blobs:
+                blob.missing_libs = self.missing_libs.get(
+                    blob.path,
+                    [],
+                )
+
+            # Compatibility + Suggestions
             self.compatibility = []
 
             for blob in self.blobs:
+
+                blob.suggestions = suggest(
+                    blob,
+                    self.src_index,
+                )
+
                 self.compatibility.append(
                     check_blob(
                         blob,

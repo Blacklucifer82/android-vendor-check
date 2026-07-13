@@ -1,12 +1,14 @@
 from vendorcheck.systemlibs import (
     SYSTEM_LIBS,
     OPTIONAL_SYSTEM_LIBS,
+    DSP_LIBS,
 )
 
 ANDROID_PREFIXES = (
     "android.",
     "vendor.",
 )
+
 
 def should_ignore(lib: str) -> bool:
     if lib.startswith("android."):
@@ -35,6 +37,7 @@ def should_ignore(lib: str) -> bool:
 
 import os
 
+
 def build_soname_index(blobs):
 
     index = {}
@@ -54,8 +57,8 @@ def build_soname_index(blobs):
 
     return index
 
-def check_needed(blobs):
-    sonames = build_soname_index(blobs)
+
+def check_needed(blobs, library_db):
 
     results = {}
 
@@ -73,10 +76,14 @@ def check_needed(blobs):
 
             if lib in SYSTEM_LIBS:
                 continue
+
             if lib in OPTIONAL_SYSTEM_LIBS:
                 continue
 
-            if lib not in sonames:
+            if lib in DSP_LIBS:
+                continue
+
+            if not library_db.has(lib):
                 missing.append(lib)
 
         results[blob.path] = missing
