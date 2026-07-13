@@ -3,6 +3,7 @@ def print_report(blobs):
     ok = 0
     missing = 0
     mismatch = 0
+    fixup = 0
 
     for b in blobs:
 
@@ -26,10 +27,22 @@ def print_report(blobs):
             ok += 1
             continue
 
+        if b.has_fixup:
+            fixup += 1
+
+            print(f"\n[FIXUP] {b.path}")
+
+            for f in b.fixups:
+                print(f"  {f.operation}{f.args}")
+
+            print(f"Expected : {b.expected_sha}")
+            print(f"Actual   : {b.actual_sha}")
+
+            continue
+
         mismatch += 1
 
         print(f"\n[MISMATCH] {b.path}")
-
         print(f"Expected : {b.expected_sha}")
 
         if b.fixed_sha:
@@ -40,5 +53,6 @@ def print_report(blobs):
     print("\n========================")
 
     print(f"OK        : {ok}")
+    print(f"FIXUP     : {fixup}")
     print(f"Mismatch  : {mismatch}")
     print(f"Missing   : {missing}")

@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
 *.pyo
-*.swp
-*.log
-.cache/
-.vscode/
+
+log.txt
+
+.venv/
+venv/
+
 .idea/
+.vscode/
+
+*.swp
