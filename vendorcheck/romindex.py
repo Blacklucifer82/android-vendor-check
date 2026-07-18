@@ -4,31 +4,32 @@ from vendorcheck.androidbp import parse_android_bp
 from vendorcheck.index import build_bp_index
 
 
-def build_rom_index(root):
-    """
-    Scan the whole ROM for Android.bp files.
-    """
+class RomIndex:
 
-    modules = {}
+    def __init__(self):
+        self.modules = {}
+        self.names = {}
+        self.srcs = {}
 
-    for path, _, files in os.walk(root):
+    def scan(self, root):
 
-        if "Android.bp" not in files:
-            continue
+        for path, _, files in os.walk(root):
 
-        bp = os.path.join(path, "Android.bp")
+            if "Android.bp" not in files:
+                continue
 
-        try:
-            parsed = parse_android_bp(bp)
-            modules.update(parsed)
+            bp = os.path.join(path, "Android.bp")
 
-        except Exception:
-            pass
+            try:
+                mods = parse_android_bp(bp)
 
-    names, srcs = build_bp_index(modules)
+                if isinstance(mods, dict):
+                    self.modules.update(mods)
+                else:
+                    for m in mods:
+                        self.modules[m["name"]] = m
 
-    return {
-        "modules": modules,
-        "names": names,
-        "srcs": srcs,
-    }
+            except Exception:
+                pass
+
+        self.names, self.srcs = build_bp_index(self.modules)

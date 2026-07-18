@@ -1,13 +1,25 @@
 from vendorcheck.compatibility import check_blob
+from vendorcheck.patch import generate_bp_patch
+
+
+def add(suggestions, text):
+    """
+    Add a suggestion only once.
+    """
+    if text not in suggestions:
+        suggestions.append(text)
 
 
 def suggest(blob, src_index):
     """
-    Generate repair suggestions for one blob.
+    Generate repair suggestions for a blob.
     """
 
     suggestions = []
 
+    #
+    # Android.bp compatibility
+    #
     result = check_blob(blob, src_index)
 
     if result is None:
@@ -16,14 +28,22 @@ def suggest(blob, src_index):
     bp = result.get("bp")
 
     #
-    # Blob has no Android.bp module
+    # No Android.bp module
     #
     if bp is None:
-        if blob.has_fixup:
-            suggestions.append("Blob has extract-files.py fixup")
 
-        for lib in blob.missing_libs:
-            suggestions.append(f"Missing dependency: {lib}")
+        if getattr(blob, "has_fixup", False):
+            add(
+                suggestions,
+                "Blob has extract-files.py fixup",
+            )
+
+        for lib in getattr(blob, "missing_libs", []):
+
+            add(
+                suggestions,
+                f"Missing dependency: {lib}",
+            )
 
         return suggestions
 
@@ -31,24 +51,59 @@ def suggest(blob, src_index):
     # Missing shared_libs
     #
     for lib in bp.get("missing", []):
-        suggestions.append(f"Add shared_lib: {lib}")
+
+        add(
+            suggestions,
+            f"Add shared_lib: {lib}",
+        )
 
     #
     # Unused shared_libs
     #
     for lib in bp.get("unused", []):
-        suggestions.append(f"Remove shared_lib: {lib}")
+
+        add(
+            suggestions,
+            f"Remove shared_lib: {lib}",
+        )
 
     #
-    # Blob fixup
+    # blob_fixup
     #
-    if blob.has_fixup:
-        suggestions.append("SHA mismatch expected (blob_fixup present)")
+    if getattr(blob, "has_fixup", False):
+
+        add(
+            suggestions,
+            "Blob has extract-files.py fixup",
+        )
 
     #
     # Missing DT_NEEDED
     #
-    for lib in blob.missing_libs:
-        suggestions.append(f"Missing dependency: {lib}")
+    for lib in getattr(blob, "missing_libs", []):
+
+        add(
+            suggestions,
+            f"Missing dependency: {lib}",
+        )
+
+    #
+    # Android.bp patch
+    #
+    patch = generate_bp_patch(result)
+
+    if patch:
+
+        add(
+            suggestions,
+            "",
+        )
+
+        for line in patch:
+
+            add(
+                suggestions,
+                line,
+            )
 
     return suggestions

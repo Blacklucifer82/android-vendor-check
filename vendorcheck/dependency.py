@@ -1,16 +1,17 @@
 from vendorcheck.systemlibs import (
     SYSTEM_LIBS,
     OPTIONAL_SYSTEM_LIBS,
-    DSP_LIBS,
-)
-
-ANDROID_PREFIXES = (
-    "android.",
-    "vendor.",
 )
 
 
 def should_ignore(lib: str) -> bool:
+    """
+    Libraries that should never be reported as missing.
+    """
+
+    if not lib:
+        return True
+
     if lib.startswith("android."):
         return True
 
@@ -35,30 +36,22 @@ def should_ignore(lib: str) -> bool:
     return False
 
 
-import os
-
-
-def build_soname_index(blobs):
-
-    index = {}
-
-    for blob in blobs:
-
-        if not blob.is_elf:
-            continue
-
-        # SONAME
-        if blob.soname:
-            index[blob.soname] = blob
-
-        # filename fallback
-        filename = os.path.basename(blob.path)
-        index.setdefault(filename, blob)
-
-    return index
-
-
 def check_needed(blobs, library_db):
+    """
+    Verify that every DT_NEEDED library is provided by
+    either:
+        • Vendor blobs
+        • Known system libraries
+
+    Returns:
+        {
+            blob.path: [
+                missing_lib1,
+                missing_lib2,
+                ...
+            ]
+        }
+    """
 
     results = {}
 
@@ -69,22 +62,36 @@ def check_needed(blobs, library_db):
 
         missing = []
 
-        for lib in blob.needed:
+        for lib in sorted(blob.needed):
 
+            #
+            # Ignore Android generated libs
+            #
             if should_ignore(lib):
                 continue
 
+            #
+            # Core platform libraries
+            #
             if lib in SYSTEM_LIBS:
                 continue
 
+            #
+            # Optional libraries
+            #
             if lib in OPTIONAL_SYSTEM_LIBS:
                 continue
 
-            if lib in DSP_LIBS:
+            #
+            # Vendor provides it
+            #
+            if library_db.has(lib):
                 continue
 
-            if not library_db.has(lib):
-                missing.append(lib)
+            #
+            # Really missing
+            #
+            missing.append(lib)
 
         results[blob.path] = missing
 

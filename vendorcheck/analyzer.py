@@ -8,10 +8,38 @@ from vendorcheck.resolver import resolve_undefined
 from vendorcheck.dependency import check_needed
 from vendorcheck.suggestions import suggest
 from vendorcheck.resolverdb import build_library_db
-from vendorcheck.romindex import build_rom_index
+from vendorcheck.stats import collect_stats
+from vendorcheck.health import calculate_health
 
 
 class Analyzer:
+    """
+    Main analysis engine.
+
+    Order of execution:
+
+        SHA
+          ↓
+        blob_fixups
+          ↓
+        Android.bp
+          ↓
+        ELF analysis
+          ↓
+        Resolver DB
+          ↓
+        Undefined symbols
+          ↓
+        DT_NEEDED
+          ↓
+        Compatibility
+          ↓
+        Suggestions
+          ↓
+        Statistics
+          ↓
+        Health
+    """
 
     def __init__(
         self,
@@ -19,89 +47,189 @@ class Analyzer:
         vendor,
         extract,
         bp,
-        rom=None,
         elf=True,
     ):
         self.blobs = blobs
         self.vendor = vendor
         self.extract = extract
         self.bp = bp
-        self.rom = rom
-        self.rom_index = None
         self.elf = elf
 
+        #
+        # Android.bp
+        #
         self.modules = {}
         self.src_index = {}
+
+        #
+        # Resolver
+        #
+        self.library_db = None
         self.symbol_map = {}
+
+        #
+        # Dependency results
+        #
         self.missing_libs = {}
+
+        #
+        # Compatibility
+        #
         self.compatibility = []
 
+        #
+        # Reports
+        #
+        self.stats = {}
+        self.health = 0
+
     def run(self):
+        """
+        Execute complete analysis.
+        """
 
+        #
+        # --------------------------------------------------
         # SHA verification
-        check_hashes(self.blobs, self.vendor)
+        # --------------------------------------------------
+        #
+        check_hashes(
+            self.blobs,
+            self.vendor,
+        )
 
-        # Parse blob fixups
-        fixups = parse_fixups(self.extract)
+        #
+        # --------------------------------------------------
+        # Parse blob_fixups
+        # --------------------------------------------------
+        #
+        fixups = parse_fixups(
+            self.extract,
+        )
 
         for blob in self.blobs:
+
             if blob.path in fixups:
+
                 blob.has_fixup = True
                 blob.fixups = fixups[blob.path]
 
+        #
+        # --------------------------------------------------
         # Parse Android.bp
-        self.modules = parse_android_bp(self.bp)
-        _, self.src_index = build_bp_index(self.modules)
-
-        if self.rom:
-            self.rom_index = build_rom_index(
-                self.rom,
+        # --------------------------------------------------
+        #
+        self.modules = parse_android_bp(
+            self.bp,
         )
-    
-        if self.elf:
 
-            # Analyze every ELF
-            for blob in self.blobs:
-                analyze_blob(blob, self.vendor)
+        _, self.src_index = build_bp_index(
+            self.modules,
+        )
 
-            # Build library database
-            self.library_db = build_library_db(
-                self.blobs,
-                self.modules,
+        #
+        # --------------------------------------------------
+        # Stop here if ELF analysis disabled
+        # --------------------------------------------------
+        #
+        if not self.elf:
+            return self
+
+        #
+        # --------------------------------------------------
+        # Analyze every ELF blob
+        # --------------------------------------------------
+        #
+        for blob in self.blobs:
+
+            analyze_blob(
+                blob,
+                self.vendor,
             )
 
-            # Resolve symbols
-            self.symbol_map = resolve_undefined(
-                self.blobs,
+        #
+        # --------------------------------------------------
+        # Build library database
+        # --------------------------------------------------
+        #
+        self.library_db = build_library_db(
+            self.blobs,
+            self.modules,
+        )
+
+        #
+        # Make DB available to blobs
+        #
+        for blob in self.blobs:
+
+            blob.library_db = self.library_db
+
+        #
+        # --------------------------------------------------
+        # Resolve undefined symbols
+        # --------------------------------------------------
+        #
+        self.symbol_map = resolve_undefined(
+            self.blobs,
+        )
+
+        #
+        # --------------------------------------------------
+        # Check DT_NEEDED
+        # --------------------------------------------------
+        #
+        self.missing_libs = check_needed(
+            self.blobs,
+            self.library_db,
+        )
+
+        for blob in self.blobs:
+
+            blob.missing_libs = self.missing_libs.get(
+                blob.path,
+                [],
             )
 
-            # Check DT_NEEDED
-            self.missing_libs = check_needed(
-                self.blobs,
-                self.library_db,
+        #
+        # --------------------------------------------------
+        # Android.bp compatibility
+        # --------------------------------------------------
+        #
+        self.compatibility = []
+
+        for blob in self.blobs:
+
+            result = check_blob(
+                blob,
+                self.src_index,
             )
 
-            for blob in self.blobs:
-                blob.missing_libs = self.missing_libs.get(
-                    blob.path,
-                    [],
-                )
+            self.compatibility.append(
+                result,
+            )
 
-            # Compatibility + Suggestions
-            self.compatibility = []
+            blob.suggestions = suggest(
+                blob,
+                self.src_index,
+            )
 
-            for blob in self.blobs:
+        #
+        # --------------------------------------------------
+        # Statistics
+        # --------------------------------------------------
+        #
+        self.stats = collect_stats(
+            self.blobs,
+        )
 
-                blob.suggestions = suggest(
-                    blob,
-                    self.src_index,
-                )
-
-                self.compatibility.append(
-                    check_blob(
-                        blob,
-                        self.src_index,
-                    )
-                )
+        #
+        # --------------------------------------------------
+        # Vendor health
+        # --------------------------------------------------
+        #
+        self.health = calculate_health(
+            self.blobs,
+            self.compatibility,
+        )
 
         return self

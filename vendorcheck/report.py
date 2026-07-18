@@ -1,57 +1,63 @@
 def print_report(blobs):
+    """
+    Print SHA verification report.
+    """
 
     ok = 0
     missing = 0
     mismatch = 0
     fixup = 0
 
-    for b in blobs:
+    for blob in blobs:
 
-        if not b.expected_sha:
+        #
+        # Blob not pinned by SHA
+        #
+        if not blob.sha1:
             continue
 
-        if not b.exists:
+        #
+        # Blob missing from vendor
+        #
+        if not getattr(blob, "exists", True):
             missing += 1
-            print(f"[MISSING] {b.path}")
+            print(f"[MISSING] {blob.path}")
             continue
 
-        valid = False
-
-        if b.actual_sha == b.expected_sha:
-            valid = True
-
-        if b.fixed_sha and b.actual_sha == b.fixed_sha:
-            valid = True
-
-        if valid:
+        #
+        # SHA matches
+        #
+        if blob.actual_sha1 == blob.sha1:
             ok += 1
             continue
 
-        if b.has_fixup:
+        #
+        # Blob has extract-files.py fixup
+        #
+        if blob.has_fixup:
+
             fixup += 1
 
-            print(f"\n[FIXUP] {b.path}")
+            print(f"\n[FIXUP] {blob.path}")
 
-            for f in b.fixups:
-                print(f"  {f.operation}{f.args}")
+            for f in blob.fixups:
+                print(f"  {f}")
 
-            print(f"Expected : {b.expected_sha}")
-            print(f"Actual   : {b.actual_sha}")
+            print(f"Expected : {blob.sha1}")
+            print(f"Actual   : {blob.actual_sha1}")
 
             continue
 
+        #
+        # SHA mismatch
+        #
         mismatch += 1
 
-        print(f"\n[MISMATCH] {b.path}")
-        print(f"Expected : {b.expected_sha}")
-
-        if b.fixed_sha:
-            print(f"Fixed    : {b.fixed_sha}")
-
-        print(f"Actual   : {b.actual_sha}")
+        print(f"\n[MISMATCH] {blob.path}")
+        print(f"Expected : {blob.sha1}")
+        print(f"Actual   : {blob.actual_sha1}")
 
     print("\n========================")
-
     print(f"OK        : {ok}")
     print(f"FIXUP     : {fixup}")
     print(f"Mismatch  : {mismatch}")

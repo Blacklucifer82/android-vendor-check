@@ -1,13 +1,39 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 
+# Logs
+*.log
 log.txt
 
+# Generated reports
+report.json
+
+# Virtual environments
 .venv/
 venv/
+env/
 
+# IDE
 .idea/
 .vscode/
 
+# Vim
 *.swp
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.bak
+*.save
+import.save
+
+# Test cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

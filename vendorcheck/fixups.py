@@ -46,9 +46,7 @@ def parse_fixups(path):
 
             op = m.group(1)
 
-            args = tuple(
-                x.strip().strip("'\"") for x in m.group(2).split(",") if x.strip()
-            )
+            args = tuple(x.strip().strip("'\"") for x in m.group(2).split(",") if x.strip())
 
             result[current_blob].append(Fixup(op, args))
 

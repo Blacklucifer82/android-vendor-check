@@ -1,57 +1,142 @@
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Set, Tuple
 
 
-@dataclass
+@dataclass(frozen=True)
 class Fixup:
-    operation: str
-    args: tuple
+    """
+    One blob_fixup operation parsed from extract-files.py.
+
+    Example:
+        .replace_needed("libfoo.so", "libbar.so")
+
+    becomes
+
+        Fixup(
+            op="replace_needed",
+            args=("libfoo.so", "libbar.so"),
+        )
+    """
+
+    op: str
+    args: Tuple[str, ...] = field(default_factory=tuple)
+
+    def __str__(self):
+        if self.args:
+            return f"{self.op}({', '.join(self.args)})"
+        return self.op
+
+    def __repr__(self):
+        return str(self)
 
 
 @dataclass
 class Blob:
+    """
+    Represents one proprietary blob.
+    """
+
+    # Path relative to proprietary root
     path: str
 
-    soname: str | None = None
+    # Optional SHA1 from proprietary-files.txt
+    sha1: Optional[str] = None
 
-    # SHA information
-    expected_sha: str | None = None
-    fixed_sha: str | None = None
-    actual_sha: str | None = None
+    # Actual SHA1
+    actual_sha1: Optional[str] = None
+    fixed_sha: Optional[str] = None
 
-    exists: bool = False
+    # Verification
+    verified: bool = False
 
-    # proprietary-files args
-    args: list[str] = field(default_factory=list)
-
-    # blob_fixup()
+    # extract-files.py fixups
     has_fixup: bool = False
-    fixups: list[Fixup] = field(default_factory=list)
+    fixups: List[str] = field(default_factory=list)
 
-    # ELF metadata
+    #
+    # ELF Information
+    #
     is_elf: bool = False
-    arch: str | None = None
-    soname: str | None = None
 
-    needed: set[str] = field(default_factory=set)
-    undefined: set[str] = field(default_factory=set)
-    exports: set[str] = field(default_factory=set)
+    soname: Optional[str] = None
 
+    needed: Set[str] = field(default_factory=set)
+
+    exports: Set[str] = field(default_factory=set)
+
+    undefined: Set[str] = field(default_factory=set)
+
+    #
+    # Dependency analysis
+    #
+    missing_libs: List[str] = field(default_factory=list)
+
+    #
+    # Suggestions
+    #
+    suggestions: List[str] = field(default_factory=list)
+
+    #
+    # Resolver
+    #
+    provider_map: Dict[str, List["Blob"]] = field(default_factory=dict)
+
+    #
     # Android.bp
-    module: str | None = None
-    allow_undefined: bool = False
-    check_elf: bool = True
+    #
+    module_name: Optional[str] = None
 
-    subsystem: str | None = None
+    compatibility_score: int = 100
 
+    #
+    # Runtime references
+    #
+    library_db = None
 
-bp_module: dict | None = None
+    #
+    # Helpers
+    #
+    @property
+    def filename(self) -> str:
+        return self.path.split("/")[-1]
 
-bp_shared_libs: set[str] = field(default_factory=set)
+    @property
+    def dirname(self) -> str:
+        return "/".join(self.path.split("/")[:-1])
 
-bp_static_libs: set[str] = field(default_factory=set)
+    @property
+    def is_library(self) -> bool:
+        return self.filename.endswith(".so")
 
-bp_header_libs: set[str] = field(default_factory=set)
+    @property
+    def is_binary(self) -> bool:
+        return "/bin/" in self.path
 
-suggestions: list[str] = field(default_factory=list)
+    @property
+    def is_firmware(self) -> bool:
+        return "/firmware/" in self.path
 
-missing_libs: list[str] = field(default_factory=list)
+    def add_needed(self, lib: str):
+        self.needed.add(lib)
+
+    def add_export(self, symbol: str):
+        self.exports.add(symbol)
+
+    def add_undefined(self, symbol: str):
+        self.undefined.add(symbol)
+
+    def add_fixup(self, fixup: str):
+        if fixup not in self.fixups:
+            self.fixups.append(fixup)
+
+    def add_suggestion(self, text: str):
+        if text not in self.suggestions:
+            self.suggestions.append(text)
+
+    def __str__(self):
+        return self.path
+
+    def __repr__(self):
+        return f"Blob({self.path})"

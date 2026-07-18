@@ -5,9 +5,12 @@ import argparse
 from vendorcheck.parser import parse_proprietary
 from vendorcheck.report import print_report
 from vendorcheck.analyzer import Analyzer
+from vendorcheck.group import group_missing
+from vendorcheck.jsonreport import export_json
 
 
 def main():
+
     parser = argparse.ArgumentParser(description="Android Vendor Sanity Checker")
 
     parser.add_argument(
@@ -19,7 +22,7 @@ def main():
     parser.add_argument(
         "--vendor",
         required=True,
-        help="Path to extracted proprietary blobs",
+        help="Path to extracted vendor blobs",
     )
 
     parser.add_argument(
@@ -37,93 +40,217 @@ def main():
     parser.add_argument(
         "--elf",
         action="store_true",
-        help="Analyze ELF files",
+        help="Enable ELF analysis",
     )
-    
+
     parser.add_argument(
-        "--rom",
-        help="Root of Android source tree",
+        "--json",
+        help="Write JSON report",
     )
 
     args = parser.parse_args()
 
+    #
     # Parse proprietary-files.txt
-    blobs = parse_proprietary(args.proprietary)
+    #
+    blobs = parse_proprietary(
+        args.proprietary,
+    )
 
-    # Run analyzer
+    #
+    # Run analysis
+    #
     analysis = Analyzer(
         blobs=blobs,
         vendor=args.vendor,
         extract=args.extract,
         bp=args.bp,
-        rom=args.rom,
         elf=args.elf,
     ).run()
 
-    # SHA/Fixup report
+    #
+    # SHA report
+    #
     print_report(blobs)
 
-    # ELF-specific output
-    if args.elf:
+    if not args.elf:
 
-        print("\n=== ELF Summary ===")
-        print(f"ELF blobs : {sum(b.is_elf for b in blobs)}")
-        print(f"SONAMEs   : {sum(1 for b in blobs if b.soname)}")
+        if args.json:
+            export_json(
+                args.json,
+                analysis,
+            )
 
-        print("\n=== Missing DT_NEEDED ===")
+        return
 
-        missing = False
+    #
+    # --------------------------------------------------
+    # ELF Summary
+    # --------------------------------------------------
+    #
+    print("\n=== ELF Summary ===")
 
-        for blob, libs in analysis.missing_libs.items():
+    print(f"ELF blobs : " f"{sum(b.is_elf for b in blobs)}")
 
-            if not libs:
+    print(f"SONAMEs   : " f"{sum(1 for b in blobs if b.soname)}")
+
+    #
+    # --------------------------------------------------
+    # Missing DT_NEEDED
+    # --------------------------------------------------
+    #
+    print("\n=== Missing DT_NEEDED ===")
+
+    groups = group_missing(
+        blobs,
+    )
+
+    if not groups:
+
+        print("None")
+
+    else:
+
+        for lib in sorted(groups):
+
+            print(lib)
+
+            for path in groups[lib]:
+
+                print(f"    {path}")
+
+    #
+    # --------------------------------------------------
+    # Compatibility
+    # --------------------------------------------------
+    #
+    print("\n=== Compatibility ===")
+
+    for result in analysis.compatibility:
+
+        if result["module"] is None:
+            continue
+
+        if result["score"] == 100:
+            continue
+
+        print(f'{result["module"]}: ' f'{result["score"]}%')
+
+    #
+    # --------------------------------------------------
+    # Suggestions
+    # --------------------------------------------------
+    #
+    print("\n=== Suggestions ===")
+
+    for blob in blobs:
+
+        if not blob.suggestions:
+            continue
+
+        print(f"\n{blob.path}")
+
+        for suggestion in blob.suggestions:
+
+            if suggestion == "":
+                print()
+            else:
+                print(f"  - {suggestion}")
+
+    #
+    # --------------------------------------------------
+    # Symbol Resolver
+    # --------------------------------------------------
+    #
+    print("\n=== Symbol Resolver ===")
+
+    for binary in sorted(
+        analysis.symbol_map,
+    ):
+
+        print(f"\n{binary}")
+
+        symbols = analysis.symbol_map[binary]
+
+        for symbol in sorted(symbols):
+
+            providers = symbols[symbol]
+
+            if not providers:
                 continue
 
-            missing = True
+            print(f"    {symbol}" f" -> " f"{providers[0].path}")
 
-            print(blob)
+    #
+    # --------------------------------------------------
+    # Statistics
+    # --------------------------------------------------
+    #
+    print("\n=== Statistics ===")
 
-            for lib in libs:
-                print(f"    {lib}")
+    for key in sorted(
+        analysis.stats,
+    ):
 
-        if not missing:
-            print("None")
+        print(f"{key:24}" f": " f"{analysis.stats[key]}")
 
-        print("\n=== Compatibility ===")
+    #
+    # --------------------------------------------------
+    # Health
+    # --------------------------------------------------
+    #
+    print("\n=== Vendor Health ===")
 
-        for result in analysis.compatibility:
+    print(f"{analysis.health}%")
 
-            if result["module"] is None:
-                continue
+    #
+    # --------------------------------------------------
+    # JSON
+    # --------------------------------------------------
+    #
+    if args.json:
 
-            if result["score"] != 100:
-                print(f'{result["module"]}: ' f'{result["score"]}%')
-
-        print("\n=== Suggestions ===")
-
-        for blob in blobs:
-
-            if not blob.suggestions:
-                continue
-
-            print(f"\n{blob.path}")
-
-            for s in blob.suggestions:
-                print(f"  - {s}")
-
-        print("\n=== Symbol Resolver ===")
-
-        x = analysis.symbol_map.get(
-            "vendor/bin/xtra-daemon",
-            {},
+        export_json(
+            args.json,
+            analysis,
         )
 
-        for symbol in sorted(x):
+    #
+    # --------------------------------------------------
+    # Summary
+    # --------------------------------------------------
+    #
+    print("\n========== SUMMARY ==========")
 
-            providers = x[symbol]
+    print(f"Total blobs        : {len(blobs)}")
 
-            if providers:
-                print(f"{symbol} -> {providers[0].path}")
+    print(f"ELF blobs          : " f"{sum(b.is_elf for b in blobs)}")
+
+    compatible = [x["score"] for x in analysis.compatibility if x["module"] is not None]
+
+    if compatible:
+
+        avg = round(sum(compatible) / len(compatible))
+
+    else:
+
+        avg = 100
+
+    print(f"Compatibility avg  : {avg}%")
+
+    missing = 0
+
+    for blob in blobs:
+
+        missing += len(blob.missing_libs)
+
+    print(f"Missing DT_NEEDED  : {missing}")
+
+    print(f"Blob fixups        : " f"{sum(b.has_fixup for b in blobs)}")
+
+    print(f"Suggestions        : " f"{sum(len(b.suggestions) for b in blobs)}")
+
+    print("============================")
 
 
 if __name__ == "__main__":
